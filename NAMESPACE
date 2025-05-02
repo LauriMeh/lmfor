@@ -28,7 +28,8 @@ export(circle, fithd, func.recweib1, func.recweib2,
        dPercbas,pPercbas,qPercbas,rPercbas,
        qtree.moments,qtree.jointdens,qtree.exy,qtree.varcov,interpolate.D,
        volvff,predvff,
-       LongTermSim)
+       LongTermSim, getGrowthCurve, growthfun, growthFunCum, growthfun0, 
+       volfun, volfun0, getThinningCurve)
 import(nlme,stats4,spatstat.geom,spatstat)
 importFrom("grDevices", "devAskNewPage")
 importFrom("graphics", "abline", "legend", "lines", "par", "points","polygon")

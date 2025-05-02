@@ -1,6 +1,4 @@
-# TODO: Add comment
-# 
-# Author: 03191657
+ # Author: 03191657
 ###############################################################################
 # 
 # Age class simulator of Lauri Mehtätalo
@@ -8,11 +6,10 @@
 # copied from file vmisimul/simfunc4.R
 # That file includes also a possibility for the video animation
 # 
-# Author: Lauri Meht�talo
+# Author: Lauri Mehtatalo
 # Simuloidaan VMI-tulosten perusteella hakkuita
 # vuoden ik�luokat, hakkkum��r� tavoitteen mukainen. 
 # p��tehakkuut kohdeneetaan satunnisesti hakkuuik�isiin metsiin 
-# N(meanph,sdph)jakaumasta 
 # osa p��tehakkuista yl�harvennuksia
 # Argumnentit: age, area growth: vejtprit joissa on l�ht�aineiston ik�luokat (vuotta), 
 #              ik�luokkien pinta-alat (hehtaaria) ja ko. ik�luokan mets�n kasvu (m3/ha/v)
@@ -32,30 +29,37 @@
 # startYear           mink� vuoden ik�jakauma annettiin tiedostossa area
 # productSink         mik� osuus hakkuukertym�st� p��tyy tuotenieluun (0-1)
 # thinningRule        kuinka usein harvennetaan ja mik� osuus tilavuudesta poistuu (k�yt� oletuksia)
-# thinningLimit       vanhin met� jota voidaan harventaa (k�yt� oletusarvoa)
+## thinningLimit       vanhin met� jota voidaan harventaa (k�yt� oletusarvoa) POISTETTU
 # ymax                tulostettavan kuvan y-akselin maksimiarvot pinta-alalle ja kasvulle
 # xmax                kuvan x-akselin maksimi
 # addTexts            tulostetanko kuvaan tekstit
-# meanph, sdph        p��tehakkuun keski-ik� ja hajonta jos exp=FALSE
 # above               mik� osuus p��tehakkuista tehd��n yl�harvennuksina, k�yt� arvoa 0
 # shift               kuinka paljon mets� nuorenee yl�harvennuksessa, k�yt� oletusta
 # phi                 p��tehakkuiden ajoituksen jakaumaa kuvaavan eksponenttijakauman rate-parametri
-# exp                 k�ytet��nk� p��tehakkuiden ajoitksen jakaumana eksponenttijakaumaa (TRUE) vai 
-#                     normaalijakaumaa (FALSE). k�yt� oletusta. 
 # areasuo             suojeltujen metsien ik�jakauma. k�yt� oletusta (esi suojelualueita mukana)
 # makeplot            tehd��nk� kuva
-# cutSuo, nortality   suojelumetsiin liittyvi� parametreja.               
- 
+# cutSuo, mortality   suojelumetsiin liittyvi� parametreja.               
+
 ###############################################################################
-LongTermSim<-function(age,area,growth,growthG=NA,protectionLimit=120,#thinning=0.005,
-                      cutCriterion,target,title="Age class simulation",simLength=2,startyear=2020,
-                      productSink=0.05,thinningRule=c(15,0.25),thinninglimit=90,
-                      ymax=c(160000,10),xmax=NA,addTexts=FALSE,meanph=90,sdph=10,
-                      above=0,shift=30,phi=1,exp=TRUE,areasuo=NA,
-                      makeplot=FALSE,cutSuo=FALSE,mortality=0.01) {
-#                                    file="simul.pdf"
-#                                     
-# 
+LongTermSim <- function(age = NULL, 
+                        area = NULL, 
+                        growth = NULL, 
+                        growthG = NA, 
+                        protectionLimit = 120, #thinning=0.005,
+                        cutCriterion = NULL, 
+                        target = NULL, 
+                        simLength = 2, 
+                        startyear = 2020,
+                        productSink = 0.05, 
+                        thinningRule = c(0.019, 100), 
+                        cutSuo = FALSE, 
+                        mortality = 0.01,
+                        phi = 1, 
+                        above = 0, 
+                        shift = 30, 
+                        areasuo = NA) {
+
+
 # productSink: which proportion of harvested volume contributes to net increase in product pool.
 # i.e., ratio product sink / cuttings
 # thinning rule: vector of lenggth two: thinning interval, and thinning removal (% of volume). 
@@ -63,57 +67,112 @@ LongTermSim<-function(age,area,growth,growthG=NA,protectionLimit=120,#thinning=0
 #  pdf(file)
 #  win.print(width=12,height=7)
 #  dev.new(width=10,height=7)
-  if (cutCriterion=="RotationLength"|cutCriterion=="CleacutArea") {
-     exp<-TRUE
-     phi<-1
-     }
-  thinning<-1-(1-thinningRule[2])^(1/thinningRule[1])
-  
-  nrep<-floor(simLength*protectionLimit)
-  nclass<-length(age)
+  if (cutCriterion == "RotationLength" | cutCriterion == "ClearcutArea") {
+    if (phi != 1) {
+      cat(paste0("Warning: exp with phi = 1 required with", 
+                 "cutCriterions 'ClearcutArea' or 'RotationLength'. Forcing.)", 
+                 fill = TRUE))
+      #exp<-TRUE # gaussian option rmvd 4/2025
+      phi<-1
+    }   
+  }
+
+  # Check arguments, do some logical checs
+  if (is.null(cutCriterion) | (length(cutCriterion) == 1 & 
+                               !(cutCriterion %in% c("RotationLength", 
+                                "ClearcutArea", "HarvestVolume", 
+                                "ProportionOfGrowth", "AbsoluteSink")))) {
+    stop(paste0("Please specify desired cutting criterion: cutCriterion. ", 
+              "For available alternatives, please refer to the documentation."))
+  }
+
+  if (is.null(age) | is.null(area) | is.null(growth)) {
+    stop("Error: Invalid parameters. Please define age, area and growth.")
+  }
+
+  if (is.null(target)) {
+    stop("Please specify desired harvesting level: target")
+  }
+
+  if (!is.numeric(simLength) || simLength <= 0) {
+    stop("Please set simLength as an integer > 0.")
+  }
+
+  if (!is.numeric(protectionLimit) | any(!is.numeric(growth)) | 
+    (any(!is.numeric(growthG)) & any(!is.na(growthG))) | any(!is.numeric(age))) {
+      stop(paste0("Invalid argument detected. Please use numeric values for ", 
+        "age, growth, growthG and protectionLimit"))
+  }
+
+  if (length(age) < simLength) { # TODO: extend vectors automatically?
+    cat(paste0("Warning: age vector is shorter", 
+      "than the number of sim. years!"), fill = TRUE)
+  }
+  nrep <- simLength # Modified 020425
+  nclass <- length(age)
+
   # kvek: hakkuiden piiriss� olevien metsien kasvu
   # suojelui�n ylitt�vien talousmetsien kasvu (area, ik�>protectionlimit)
   # suojeltujen metsien kasvu (areasuo)
-  kvek<-kvek2<-kvek3<-hvek<-mvek<-rep(0,nrep) # nettokasvut
-  kvekG<-kvek2G<-kvek3G<-rep(0,nrep) # bruttokasvut
-  ikajak<-matrix(0,ncol=nrep+1,nrow=nclass+nrep)
-  ikajaksuo<-matrix(0,ncol=nrep+1,nrow=nclass+nrep)
+  kvek <- kvek2 <- kvek3 <- hvek <- mvek <- rep(0, nrep) # Initialize net growth
+  kvekG <- kvek2G <- kvek3G <- rep(0, nrep) # Initialize gross growth
+  ikajak <- matrix(0, ncol = nrep + 1, 
+                  nrow = nclass + nrep) # init age distrib matrix, mineral
+                  # is the "+ nrep" just for extra rows?
+  ikajaksuo <- matrix(0, ncol = nrep + 1, # init age distrib matrix, mire
+                  nrow = nclass + nrep)
 
-  if (is.na(areasuo[1])) areasuo<-rep(0,length(area))
+  if (is.na(areasuo[1])) areasuo<-rep(0, length(area))
   if (cutSuo) {
               area<-area+areasuo
               areasuo<-rep(0,length(area))
               } 
   
-  ikajak[1:nclass,1]<-area
-  ikajaksuo[1:nclass,1]<-areasuo
+  ikajak[1:nclass,1]<-area # set current state
+  ikajaksuo[1:nclass,1]<-areasuo # set current state
   
-  k<-length(age)
-  cuttingInstruction<-rep(0,k)
-  cuttingInstruction[1:(thinninglimit-1)]<-thinning # Which proportion is removed in thinnings each year 
-  V<-(1-cuttingInstruction)*growth    # initialize, used only for year 1
-  Vs<-(1-mortality)*growth
-  removals<-cuttingInstruction*growth # initialize, use only for year 1
-  mortalityVek<-rep(0,k)
-  mortalityVek[1:100]<-mortality
-  removalss<-mortalityVek*growth # initialize, use only for year 1
+  # Cuttings
+  # Initilaize cuttin instruction
+  k <- length(age)
+  cuttingInstruction <- rep(0, k)
+  # Determine thinning rules
+  if (length(thinningRule) == (length(age) - 1)) {
+    cat("User-defined thinning rule activated.", fill = TRUE)
+    cuttingInstruction[1:(length(cuttingInstruction) - 1)] <- thinningRule 
+  } else if (length(thinningRule) == 2) {
+    #thinning <- 1-(1-thinningRule[2])^(1/thinningRule[1])
+    thin_limit <- thinningRule[2] # assume 100 year limit for thinnings
+    thinning <- thinningRule[1]# Lauris original, 1.9% of class volume 1 - (1 - 0.25)^(1 / 15) 
+    cuttingInstruction[1:(thin_limit - 1)] <- thinning 
+  } else {
+    stop("Invalid thinningRule. Please give a vector of removals", "\n",
+          "by age class or a volume curve and cumulative growth curve.")
+  }
+
+  # Initialize vectors
+  V <- (1 - cuttingInstruction) * growth    # initialize, used only for year 1
+  Vs <- (1 - mortality) * growth
+  removals <- cuttingInstruction * growth # initialize, use only for year 1
+  mortalityVek <- rep(0, k)
+  mortalityVek[1:100] <- mortality
+  removalss <- mortalityVek * growth # initialize, use only for year 1
   for (i in 2:k) {
       # volume (per ha) of age class i: volume of class i-1 + growth - removals
       V[i]<-(1-cuttingInstruction[i])*(V[i-1]+growth[i]) 
       removals[i]<-cuttingInstruction[i]*(V[i-1]+growth[i])
-      Vs[i]<-(1-mortalityVek[i])*(Vs[i-1]+growth[i]) # suojelumets�n tilavuus i�ss� x
+      Vs[i]<-(1-mortalityVek[i])*(Vs[i-1]+growth[i]) # suojelumetsan tilavuus iassa x
       removalss[i]<-mortalityVek[i]*(Vs[i-1]+growth[i])
-      }
+  }
     
 #  oldestClass<-protectionLimit
   overcut<-FALSE
   oldestClass<-max((1:length(area))[area>0])
 #  cat(length(target),", ",nrep,"\n")
-  if (length(target)==1) {
-     target<-rep(target,nrep)
-     } else if (length(target)!=nrep) {
-     stop("The length of target should equal to 1 or number of simualtion years")
-	 } 
+  if (length(target) == 1 | length(target) == nrep) {
+     target <- rep(target, nrep)
+	} else {
+    stop("The length of target should equal to 1 or number of simulation years")
+  }
   for (i in 1:nrep) { 
     # Growth of productive (kvek), old (kvek2) and productive forest
 #    cat(i,"/",nrep,"\n")
@@ -126,8 +185,8 @@ LongTermSim<-function(age,area,growth,growthG=NA,protectionLimit=120,#thinning=0
        kvek3G[i]<-sum(areasuo*growthG)/1e6 # suojelumetsien kasvu
        }
     # compute thinning removals ..    
-    hvek[i]<-sum(area*removals)/1e6
-    mvek[i]<-sum(areasuo*removalss)/1e6 # kuolleisuus suojelumetsiss�
+    hvek[i]<-sum(area*removals)/1e6 # Thinning removals
+    mvek[i]<-sum(areasuo*removalss)/1e6 # mortality in protected forests
     # .. and find how much more m3 needs to be cut in final fellings
     # to meet the cutting criteria 
     # hakkuutavoite0 = removals from thinnings and clearcuts
@@ -148,7 +207,9 @@ LongTermSim<-function(age,area,growth,growthG=NA,protectionLimit=120,#thinning=0
               tmp<-tmp-1
               }
         } else if (cutCriterion=="HarvestVolume") {
-        hakkuutavoite0 <- max(target[i],hvek[i]) # Hakataan aina ainakin harvennukset, tämä pitäisi implemetopida myös muihin kriteereihin
+          hakkuutavoite0 <- max(target[i], hvek[i]) # Hakataan aina ainakin harvennukset, tämä pitäisi implemetopida myös muihin kriteereihin
+        } else {
+          stop("Invalid cutCriterion.")
         }
         
         # Todelinen 
@@ -159,11 +220,8 @@ LongTermSim<-function(age,area,growth,growthG=NA,protectionLimit=120,#thinning=0
     # Remove so much volume from the oldest classes 
     # that the target is met. 
     
-    if (exp) {
-       jak<-sort(dexp(0:(oldestClass-1),phi))
-       } else {
-       jak<-dnorm(age[1:oldestClass],mean=meanph,sd=sdph)
-       }
+    jak<-sort(dexp(0:(oldestClass-1),phi))
+    
     Vshift<-c(rep(0,shift),V)[1:oldestClass]
     ero<-function(alpha) {
          avovek<-pmin(alpha*jak,1)
@@ -228,70 +286,18 @@ LongTermSim<-function(age,area,growth,growthG=NA,protectionLimit=120,#thinning=0
     sinktot2c<-cumsum(sinkp2+sink2)
     sinktot3c<-cumsum(sinkp3+sink3) 
     
-    if (makeplot) {
-    par(mai=par()$mai[c(1,2,3,2)])
-    if (is.na(xmax)) xmax<-simLength*protectionLimit 
-    gfactor<-ymax[1]/ymax[2]
-#  if (is.na(growth)) growth<-growthfun(age)
-
-  # Kuvien piirto
-    for (k in 1:5) {
-      plot(age,(ikajak+ikajaksuo)[,1],type="n",lwd=20,lend=1,col="green",ylim=c(0,max(ymax[1],gfactor*ymax[2])),xlim=c(0,xmax),
-           main=paste(title,"Year",startyear),ylab="area, ha",xlab="age class, yr")
-  for (j in 1:ymax[2]) {
-      abline(h=(j-1)*gfactor,col="gray")
-      mtext((j-1),side=4,at=gfactor*(j-1),cex=1)
-      }
-  mtext("Growth, m3/ha",side=4,at=ymax[1]/2,cex=1,line=1.3) 
-  points(age,(ikajak+ikajaksuo)[,1],type="h",lwd=1,lend=1,col="#336600")
-  points(age,(ikajaksuo)[,1],type="h",lwd=1,lend=1,col="red")
-  lines(age,growth*gfactor)
-  } # k in 1:5
-    
-  for (i in 1:nrep) {
-    plot(age,(ikajak+ikajaksuo)[,i+1],type="n",lwd=20,lend=1,col="green",ylim=c(0,ymax[1]),xlim=c(0,xmax),
-         main=paste(title,"Year",startyear+i),
-         ylab="area, ha",xlab="age class, yr")
-#    xxyy<-par()$usr
-#    ranx<-diff(xxyy[1:2])
-#    rany<-diff(xxyy[3:4])
-#    minx<-xxyy[1]
-#    miny<-xxyy[3]
-    for (j in 1:ymax[2]) {
-        abline(h=(j-1)*gfactor,col="gray")
-        mtext((j-1),side=4,at=gfactor*(j-1),cex=1)
-        }
-    mtext("Growth, m3/ha",side=4,at=ymax[1]/2,cex=1,line=1.3) 
-    points(age,(ikajak+ikajaksuo)[,i+1],type="h",lwd=1,lend=1,col="#336600")
-    points(age,ikajaksuo[,i+1],type="h",lwd=1,lend=1,col="red")
-    lines(age,growth*gfactor)
-
-    if (addTexts) {
-    text(c(0.75,0.85,0.95)*xmax,rep(1,3)*ymax[1],c("Commercial","Protected","Total"),pos=2)
-    text(c(0.65,0.75,0.85,0.95)*xmax,rep(0.95,4)*ymax[1],c("Growth, Mm3/v",round(kvek[i],2),round((kvek2+kvek3)[i],2),round((kvek+kvek2+kvek3)[i],2)),pos=2)
-    text(c(0.65,0.75,0.85,0.95)*xmax,rep(0.9,4)*ymax[1],c("Removals, Mm3/v",round(hvek[i],2),0,round(hvek[i],2)),pos=2)
-    text(c(0.65,0.75,0.85,0.95)*xmax,rep(0.85,4)*ymax[1],
-         c("Carbon sink of standing trees, Mm3/v",round(sink1[i],2),round(sink2[i],2),round(sink3[i],2)),pos=2,
-         col=c(1,1,1,1))
-    text(c(0.65,0.75,0.85,0.95)*xmax,rep(0.8,4)*ymax[1],
-         c("Carbon sink of wood products, Mm3/v",round(sinkp1[i],2),round(sinkp2[i],2),round(sinkp3[i],2)),pos=2,
-         col=c(1,1,1,1))
-    text(c(0.65,0.75,0.85,0.95)*xmax,rep(0.75,4)*ymax[1],col=c(1,2,1,1),c("Cumulative sink of standing trees, Mm3",round(sink1c[i],2),round(sink2c[i],2),round(sink3c[i],2)),pos=2)
-    text(c(0.65,0.75,0.85,0.95)*xmax,rep(0.70,4)*ymax[1],col=c(1,2,1,1),c("Cumulative total sink, Mm3",round(sinktot1c[i],2),round(sinktot2c[i],2),round(sinktot3c[i],2)),pos=2)    
-    }
-  }
-  }
-#    dev.off()  
-  list(ikajakTalous=ikajak,ikajakSuojellut=ikajaksuo,
-       nettokasvut=data.frame(nuoret=kvek,vanhat=kvek2,suojellut=kvek3),
-       bruttokasvut=data.frame(nuoret=kvekG,vanhat=kvek2G,suojellut=kvek3G),
+#    dev.off() 
+  # Return # TODO
+  return(list(ikajakTalous=ikajak,ikajakSuojellut=ikajaksuo,
+       netgrowths=data.frame(nuoret=kvek,vanhat=kvek2,suojellut=kvek3),
+       grossgrowths=data.frame(nuoret=kvekG,vanhat=kvek2G,suojellut=kvek3G),
        hakkuumaara=hvek,
        nielut=data.frame(puustoTalous=sink1,puustoSuojelu=sink2,puustoYht=sink3,
                          tuoteTalous=sinkp1,tuoteSuojelu=sinkp2,tuoteYht=sinkp3),
        nielutCum=data.frame(puustoTalous=sink1c,puustoSuojelu=sink2c,puustoYht=sink3c,
                             tuoteTalosu=sinktot1c,tuoteSuojelu=sinktot2c,tuoteYht=sinktot3c),
        growth=sum(kvek[1:nrep]),
-	   growthCurve<-growth,
+	     growthCurve<-growth,
        removals=sum(hvek[1:nrep]),
        volume=V,
        volumeSuo=Vs,
@@ -302,7 +308,7 @@ LongTermSim<-function(age,area,growth,growthG=NA,protectionLimit=120,#thinning=0
        varSuo=sink2c,
        nieTal=sink1,
        nieSuo=sink2,
-       overcut=overcut)
+       overcut=overcut))
   }
 
            
