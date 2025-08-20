@@ -289,7 +289,7 @@ getThinningCurve <- function(tmax_class = 300,
     #                 " Is this the right one? Please remove it."))
     # }
     
-    pred_cur <- predict(modnlsVol0, newdata = preddat)[-(1:length(domain_stra$maakunta))]
+    pred_cur <- predict(volmodel, newdata = preddat)[-(1:length(domain_stra$maakunta))]
     thin_recipe <- diff(cumnetgrowth - pred_cur) # Cum thin
 
     thin_recipe_p <- thin_recipe / cumnetgrowth[-1] # the proportion of volume given by curve
