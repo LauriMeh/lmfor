@@ -47,11 +47,11 @@ growthpast5<-function(age,N,ltheta1,theta2,ir,slope1,slope2) {
              apply(cbind(age,N,theta1,theta2,ir),1,growthfun05)
 }   
 
-# A function used to fit the growth curve
-growthfun <- function(age, N, ltheta1, theta2, ir, slope1, slope2) {
-               theta1 <- exp(ltheta1)
-               apply(cbind(age, N, theta1, theta2, ir), 1, growthfun0)
-}
+## A function used to fit the growth curve
+#growthfun <- function(age, N, ltheta1, theta2, ir, slope1, slope2) {
+#               theta1 <- exp(ltheta1)
+#               apply(cbind(age, N, theta1, theta2, ir), 1, growthfun0)
+#}
 
 # A cumulative version of the growth function, used in the fitting phase
 # Takes into account the retention trees.
