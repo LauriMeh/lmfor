@@ -1,94 +1,6 @@
-# Input is a vector with elemets age, N, theta1, theta2 and ir. 
-# Growth of the current year
-growthfun0<-function(input) {
-           age<-input[1]
-           N<-input[2]
-           theta1<-input[3]
-           theta2<-input[4]
-           ir<-input[5]
-           GPP<-theta1*(1-exp(-N/10000*pi*((1:age)*ir)^2))
-           R<-0
-           increment<-GPP[1]
-           if (age>1) {
-              for (i in 2:age) {
-                  R<-R+theta2*increment
-                  increment<-GPP[i]-R
-                  }
-              }
-           increment
-}
-
-# Input is a vector with elemets age, N, theta1, theta2 and ir.
-# Growth of the last 5 years 
-# This is used in the model fitting phase
-growthfun05<-function(input, T=5) {
-           age<-input[1]
-           N<-input[2]
-           theta1<-input[3]
-           theta2<-input[4]
-           ir<-input[5]
-           GPP<-theta1*(1-exp(-N/10000*pi*((1:age)*ir)^2))
-           R<-0
-           increment<-rep(NA,length(GPP))
-           increment[1]<-GPP[1]
-           if (age>1) {
-              for (i in 2:age) {
-                  R<-R+theta2*increment[i-1]
-                  increment[i]<-GPP[i]-R
-                  }
-              }
-           sum(increment[max(1,age-T+1):age])/T
-}
-           
-growthpast5<-function(age,N,ltheta1,theta2,ir,slope1,slope2) {
-             theta1<-exp(ltheta1)
-             slope1*pmax(0,6-age)+ # edellisen sukupolven puut
-             slope2*pmax(0,50-age)+ # jättöpuut
-             apply(cbind(age,N,theta1,theta2,ir),1,growthfun05)
-}   
-
-## A function used to fit the growth curve
-#growthfun <- function(age, N, ltheta1, theta2, ir, slope1, slope2) {
-#               theta1 <- exp(ltheta1)
-#               apply(cbind(age, N, theta1, theta2, ir), 1, growthfun0)
-#}
-
-# A cumulative version of the growth function, used in the fitting phase
-# Takes into account the retention trees.
-volfun<-function(age,lambda,ltheta1,theta2,ir,slope) { # funktio on sama kuin ennen
-	theta1<-exp(ltheta1)
-	slope*pmax(0,10-age)+ # jättöpuut oletetaa
-	apply(cbind(age,lambda,theta1,theta2,ir),1,growthFunCum)
-}
-
-volfun0<-function(age,lambda,ltheta1,theta2,ir,slope) { 
-	theta1<-exp(ltheta1)
-#	slope*pmax(0,10-age)++ # jättöpuut oletetaa
-	apply(cbind(age,lambda,theta1,theta2,ir),1,growthFunCum)
-}
-
-# A cumulative version of the growth function. This is used in the prediction
-growthFunCum<-function(input) {
-	age<-input[1]
-	lambda<-input[2]
-	theta1<-input[3]
-	theta2<-input[4]
-	ir<-input[5]
-	GPP<-theta1*(1-exp(-lambda/10000*pi*((1:age)*ir)^2))
-	R<-0
-	increment<-rep(NA,length(GPP))
-	increment[1]<-GPP[1]
-	if (age>1) {
-		for (i in 2:age) {
-			R<-R+theta2*increment[i-1]
-			increment[i]<-GPP[i]-R
-		}
-	}
-	if (age>0) sum(increment) else 0
-}
-
 # A helper function that predicts growth curve to a desired domain
 # Note that the levels of the stratification variables (dummys) must be provided
+# Curvetype: "cur", "past", "cum"
 getGrowthCurve <- function(
     tmax = 300,
     maakunta = "Pohjois-Karjala",
@@ -96,6 +8,7 @@ getGrowthCurve <- function(
     suo = "Kangas",
     type = c("Netto", "Brutto")[1], 
     mods = models,
+    curvetype = "cur",
     # maakunnat = c(
     #     "Uusimaa", "Varsinais-Suomi", "Satakunta", "Kanta-Hame",
     #     "Pirkanmaa", "Paijat-Hame", "Kymenlaakso", "Etela-Karjala",
@@ -112,6 +25,10 @@ getGrowthCurve <- function(
     kasvupaikat =c("Fertile","Medium","Unfertile","Very unfertile"),
     #suot = c("Kangas", "Turvemaa"),
     suot = c("Mineral soil", "Peatland")) {
+    
+    if (!(curvetype %in% c("cur", "past", "cum"))) {
+        stop("Error! Please specify a valid curvetype: cur, past or cum.")    
+    }
     # predict.gls -funktiossa bugi, ja siksi newdatassa pitää esiintyä
     # luokitteluasteikollisten muuttujoen kaikkia tasoja.
     # siksi dataan pitää lisätä ne alkuun ja pudotetaan niiden ennusteeet lopuksi pois
@@ -126,11 +43,169 @@ getGrowthCurve <- function(
     if (!(any(kasvupaikka == kasvupaikat))) stop("Kasvupaikkaa on oltava 'Reheva', 'Keskihyva', 'Karuhko' tai 'Karu'")
     if (!(any(suo == suot))) stop("'suo' on olatava 'Kangas' tai 'Turvemaa'")
     if (type == "Netto") sel <- 1 else sel <- 2
-    #                growthfun<-attributes(mods)$growthfun
-    #                growthfun0<-attributes(mods)$growthfun0
+
+    # Do checkups for the global environment
+    # Functions must be present in the global environment
+    # Ensure that there are no existing functions with same names
+    if (!exists("growthfun", envir = .GlobalEnv)) {
+        growthfun_bup <- NULL
+    } else { # if already exists, backups
+        cat("growthfun exists in the .GlobalEnv. Omitting, taking back-ups.", fill = TRUE)
+        growthfun_bup <- growthfun
+        rm(growthfun, envir = .GlobalEnv)
+    }
+
+    if (!exists("growthfun0", envir = .GlobalEnv)) {
+        growthfun0_bup <- NULL
+    } else { # if already exists, backups
+        cat("growthfun0 exists in the .GlobalEnv. Omitting, taking back-ups.", fill = TRUE)
+        growthfun0_bup <- growthfun0
+        rm(growthfun0, envir = .GlobalEnv)
+    }
+
+    if (!exists("growthfun05", envir = .GlobalEnv)) {
+        growthfun05_bup <- NULL
+    } else { # if already exists, backups
+        cat("growthfun05 exists in the .GlobalEnv. Omitting, taking back-ups.", fill = TRUE)
+        growthfun05_bup <- growthfun05
+        rm(growthfun05, envir = .GlobalEnv)
+    }
+
+    if (!exists("growthFunCum", envir = .GlobalEnv)) {
+        growthFunCum_bup <- NULL
+    } else { # if already exists, backups
+        cat("growthFunCum exists in the .GlobalEnv. Omitting, taking back-ups.", fill = TRUE)
+        growthFunCum_bup <- growthFunCum
+        rm(growthFunCum, envir = .GlobalEnv)
+    }
+
+    # Prepare functions by curve types 
+    if (curvetype == "cur") {
+        # Growth of the current year
+        growthfun0<-function(input) {
+                age<-input[1]
+                N<-input[2]
+                theta1<-input[3]
+                theta2<-input[4]
+                ir<-input[5]
+                GPP<-theta1*(1-exp(-N/10000*pi*((1:age)*ir)^2))
+                R<-0
+                increment<-GPP[1]
+                if (age>1) {
+                    for (i in 2:age) {
+                        R<-R+theta2*increment
+                        increment<-GPP[i]-R
+                        }
+                    }
+                increment
+        }
+        assign("growthfun0", growthfun0, envir = .GlobalEnv)
+        # Specifify growth function for the prediction stage
+        growthfun <- function(age,N,ltheta1,theta2,ir,slope1,slope2) {
+                        theta1<-exp(ltheta1)
+                        apply(cbind(age,N,theta1,theta2,ir),1,growthfun0)
+                        }
+    } else if (curvetype == "past") {
+        # Growth of the last 5 years 
+        growthfun05<-function(input, T=5) {
+                age<-input[1]
+                N<-input[2]
+                theta1<-input[3]
+                theta2<-input[4]
+                ir<-input[5]
+                GPP<-theta1*(1-exp(-N/10000*pi*((1:age)*ir)^2))
+                R<-0
+                increment<-rep(NA,length(GPP))
+                increment[1]<-GPP[1]
+                if (age>1) {
+                    for (i in 2:age) {
+                        R<-R+theta2*increment[i-1]
+                        increment[i]<-GPP[i]-R
+                        }
+                    }
+                sum(increment[max(1,age-T+1):age])/T
+        }
+        assign("growthfun05", growthfun05, envir = .GlobalEnv)
+        # Specifify growth function for the prediction stage
+        growthfun <- function(age,N,ltheta1,theta2,ir,slope1,slope2) {
+                        theta1<-exp(ltheta1)
+                        slope1*pmax(0,6-age)+ # edellisen sukupolven puut
+                        slope2*pmax(0,50-age)+ # jättöpuut
+                        apply(cbind(age,N,theta1,theta2,ir),1,growthfun05)
+                        }
+    } else if (curvetype == "cum") {
+        # A cumulative version of the growth function. This is used in the prediction
+        growthFunCum<-function(input) {
+            age<-input[1]
+            lambda<-input[2]
+            theta1<-input[3]
+            theta2<-input[4]
+            ir<-input[5]
+            GPP<-theta1*(1-exp(-lambda/10000*pi*((1:age)*ir)^2))
+            R<-0
+            increment<-rep(NA,length(GPP))
+            increment[1]<-GPP[1]
+            if (age>1) {
+                for (i in 2:age) {
+                    R<-R+theta2*increment[i-1]
+                    increment[i]<-GPP[i]-R
+                }
+            }
+            if (age>0) sum(increment) else 0
+            }
+        assign("growthFunCum", growthFunCum, envir = .GlobalEnv)
+        # Specifify growth function for the prediction stage
+        growthfun <- function(age,N,ltheta1,theta2,ir,slope1,slope2) {
+                        theta1<-exp(ltheta1)
+                        apply(cbind(age,N,theta1,theta2,ir),1,growthFunCum)
+                        }
+    } else {
+        stop("Invalid curvetype.")
+    }
+
+    assign("growthfun", growthfun, envir = .GlobalEnv)
+
     pred <- predict(mods[[sel]], newdata = preddat)[-(1:length(maakunnat))]
     attr(pred, "MAI") <- cumsum(pred) / (1:tmax)
-    pred
+
+    # Check if glob env was modified, back-modify if modified
+    if (!is.null(growthfun_bup)) {
+        assign("growthfun", growthfun_bup, envir = .GlobalEnv)
+    } else { # remove if it was assigned
+        rm(growthfun, envir = .GlobalEnv)
+    }
+
+    # Check if glob env was modified, back-modify if modified
+    if (curvetype == "cur" & !is.null(growthfun0_bup)) {
+        assign("growthfun0", growthfun0_bup, envir = .GlobalEnv)
+    } else if (curvetype == "cur" & 
+        is.null(growthfun0_bup)) { # remove if it was assigned
+        rm(growthfun0, envir = .GlobalEnv)
+    } else {
+        TRUE
+    }
+
+    # Check if glob env was modified, back-modify if modified
+    if (!is.null(growthfun05_bup)) {
+        assign("growthfun05", growthfun05_bup, envir = .GlobalEnv)
+    } else if (curvetype == "past" & 
+        is.null(growthfun05_bup)) { # remove if it was assigned
+        rm(growthfun05, envir = .GlobalEnv)
+    } else {
+        TRUE
+    }
+
+    # Check if glob env was modified, back-modify if modified
+    if (!is.null(growthFunCum_bup)) {
+        assign("growthFunCum", growthFunCum_bup, envir = .GlobalEnv)
+    } else if (curvetype == "cum" & 
+            is.null(growthFunCum_bup)) { # remove if it was assigned
+        rm(growthFunCum, envir = .GlobalEnv)
+    } else {
+        TRUE
+    }
+    # Returns
+    return(pred)
 }
 
 # domain_stra: A list of all possible stratification variables that define domains, eg. geographical areas, and fertility
@@ -146,14 +221,12 @@ getThinningCurve <- function(tmax_class = 300,
                         suo = "Mineral soil",
                         netgrowthmod = models$Net,
                         volmodel = modnlsVol0,
+                        retrees = TRUE,
                         domain_stra = list(maakunta = c("auto"),
                                           kluok = c("Fertile", "Medium", 
                                                     "Unfertile", "Very unfertile"),
                                           suo = c("Mineral soil", "Peatland"))) {
-    add_f_globen_g <- FALSE #dev tests; to be removed
-    add_f_globen_v <- FALSE #dev tests; to be removed
-    # TODO: target variables as a list!
-    # # DBG
+    # # DBG with the Finnish data
     # domain_stra <- list(
     #     maakunta = c(
     #         "Uusimaa", "Southwest Finland", "Satakunta", "Kanta-Hame",
@@ -170,6 +243,7 @@ getThinningCurve <- function(tmax_class = 300,
     strat_vs <- names(domain_stra)
 
     # Function to split strings based on the pattern, using base R
+    # This is used to catch domains from the model object
     split_strings <- function(strings, pattern, element) {
         result <- lapply(strings, function(str) {
             split_result <- strsplit(str, pattern)[[1]] # strsplit returns a list
@@ -218,7 +292,7 @@ getThinningCurve <- function(tmax_class = 300,
         rep(kluok, tmax_class)), levels = domain_stra$kluok),
         suo = factor(c(rep(domain_stra$suo, length = length(domain_stra$maakunta)), 
         rep(suo, tmax_class)), levels = domain_stra$suo),
-        ika = c(rep(1, length(domain_stra$maakunta)), 1:tmax_class)
+        ika = c(rep(1, length(domain_stra$maakunta)), 1:tmax_class) # Requires re-thinking
     )
 
     if (!(any(maakunta == domain_stra$maakunta))) stop("Maakuntaa ei loydy")
@@ -227,83 +301,121 @@ getThinningCurve <- function(tmax_class = 300,
    
     if (!(any(suo == domain_stra$suo))) stop("'suo' on olatava 'Kangas' tai 'Turvemaa'")
     
-    # # Used by the predict function
-    # growthFunCum <- function(input) {
-    #     age<-input[1]
-    #     lambda<-input[2]
-    #     theta1<-input[3]
-    #     theta2<-input[4]
-    #     ir<-input[5]
-    #     GPP<-theta1*(1-exp(-lambda/10000*pi*((1:age)*ir)^2))
-    #     R<-0
-    #     increment<-rep(NA,length(GPP))
-    #     increment[1]<-GPP[1]
-    #     if (age>1) {
-    #         for (i in 2:age) {
-    #             R<-R+theta2*increment[i-1]
-    #             increment[i]<-GPP[i]-R
-    #         }
-    #     }
-    #     if (age>0) sum(increment) else 0
-    # }
-
-    # Function used in the model fitting, growthfun0 to be replaced
-
-    # if (!exists("growthfun", envir = .GlobalEnv)) {
-    #     growthfun <<- function(age, N, ltheta1, theta2, ir, slope1, slope2) {
-    #                   theta1 <- exp(ltheta1)
-    #                   apply(cbind(age, N, theta1, theta2, ir), 1, growthfun0)
-    #     }
-    #     add_f_globen_g <- TRUE
-    # } else {
-    #     stop(paste0("Stopping: growthfun found in .GlobalEnv. ", 
-    #                 " Is this the right one?"))
-    # }
-
-
-    # Used by the predict function
-    volfun0 <- function(age, lambda, ltheta1, theta2, ir, slope) { 
-        theta1 <- exp(ltheta1)
-    #	slope*pmax(0,10-age)++ # jättöpuut oletetaa
-        apply(cbind(age, lambda, theta1, theta2, ir), 1, growthFunCum)
+    # Do checkups for the global environment
+    # volfun  must be present in the global environment while prediction
+    if (!exists("volfun", envir = .GlobalEnv)) {
+        volfun_bup <- NULL
+    } else { # if already exists, backups
+        cat("volfun exists in the .GlobalEnv. Omitting, taking back-ups.", 
+        fill = TRUE)
+        volfun_bup <- volfun
+        rm(volfun, envir = .GlobalEnv)
     }
     
-    # Use cumulative in the pred function
-    #growthfun0 <- growthFunCum  # Not working?
-    growthfun <- function(age, N, ltheta1, theta2, ir, slope1, slope2) {
-                theta1 <- exp(ltheta1)
-                apply(cbind(age, N, theta1, theta2, ir), 1, growthFunCum)
+    # Do the same for 
+    if (!exists("growthFunCum", envir = .GlobalEnv)) {
+        growthFunCum_bup <- NULL
+    } else { # if already exists, backups
+        cat("growthFunCum exists in the .GlobalEnv. Omitting, taking back-ups.", 
+            fill = TRUE)
+        growthFunCum_bup <- growthFunCum
+        rm(growthFunCum, envir = .GlobalEnv)
+    }    
+
+    # Do the same for growthfun
+    if (!exists("growthfun", envir = .GlobalEnv)) {
+        growthfun_bup <- NULL
+    } else { # if already exists, backups
+        cat("growthfun exists in the .GlobalEnv. Omitting, taking back-ups.", 
+            fill = TRUE)
+        growthfun_bup <- growthfun
+        rm(growthfun, envir = .GlobalEnv)
+    }    
+
+    # A cumulative version of the growth function. This is used in the prediction
+    growthFunCum <- function(input) {
+        age <- input[1]
+        lambda <- input[2]
+        theta1 <- input[3]
+        theta2 <- input[4]
+        ir <- input[5]
+        GPP <- theta1 * (1 - exp(-lambda / 10000 * pi * ((1:age) * ir)^2))
+        R <- 0
+        increment <- rep(NA, length(GPP))
+        increment[1] <- GPP[1]
+        if (age > 1) {
+            for (i in 2:age) {
+                R <- R + theta2 * increment[i - 1]
+                increment[i] <- GPP[i] - R
+            }
+        }
+        if (age > 0) sum(increment) else 0
     }
+    if (retrees) {
+        # This is a cumulative version of the growth function
+        # Note: the growth of retention trees for ten years.
+        volfun <- function(age, lambda, ltheta1, theta2, ir, slope) {
+            theta1 <- exp(ltheta1)
+            slope*pmax(0,10-age)+ # jatto oletetaa koska cumsum
+            apply(cbind(age, lambda, theta1, theta2, ir), 1, growthFunCum)
+        }
+    } else {
+        # This is a cumulative version of the growth function
+        # Do not consider the growth of retention trees
+        volfun <- function(age, lambda, ltheta1, theta2, ir, slope) { 
+            theta1 <- exp(ltheta1)
+        #	slope*pmax(0,10-age)++ # jättöpuut oletetaa
+            apply(cbind(age, lambda, theta1, theta2, ir), 1, growthFunCum)
+        }
+    }
+
+    # Specifify growth function for the prediction, growth curve based volume
+    growthfun <- function(age,N,ltheta1,theta2,ir,slope1,slope2) {
+                    theta1<-exp(ltheta1)
+                    apply(cbind(age,N,theta1,theta2,ir),1,growthFunCum)
+                    }    
+
+    assign("volfun", volfun, envir = .GlobalEnv)
+    assign("growthFunCum", growthFunCum, envir = .GlobalEnv)
+    assign("growthfun", growthfun, envir = .GlobalEnv)
 
     # Carry out predictions with the cumulative growth function
     # Predict volume by age class, based on the net growth curve
     cumnetgrowth <- predict(netgrowthmod, 
-                            newdata = preddat)[-(1:length(domain_stra$maakunta))]
-    # Predict using volume models, current volume
-    # The volfun must be in the global environ for the predict function
-    # if (!exists("volfun", envir = .GlobalEnv)) {
-    #     volfun <<- volfun0
-    #     add_f_globen_v <- TRUE
-    # } else {
-    #     stop(paste0("Stopping: volfun found in .GlobalEnv. ", 
-    #                 " Is this the right one? Please remove it."))
-    # }
-    
+                        newdata = preddat)[-(1:length(domain_stra$maakunta))]
+
     pred_cur <- predict(volmodel, newdata = preddat)[-(1:length(domain_stra$maakunta))]
     thin_recipe <- diff(cumnetgrowth - pred_cur) # Cum thin
 
-    thin_recipe_p <- thin_recipe / cumnetgrowth[-1] # the proportion of volume given by curve
+    thin_recipe_p <- thin_recipe / 
+        cumnetgrowth[-length(cumnetgrowth)] # the proportion of volume removed in a year
+                                            # in terms of cumnetgrowth at age0
+    # match length with age, 
+    # add zero-thinning for age class zero, assuming no thinnings for zero age
+    # Note: age classes start from zero
+    # Repeat for last class 
+    thin_recipe <- c(0, thin_recipe, thin_recipe[length(thin_recipe)]) 
+    thin_recipe_p <- c(0, thin_recipe_p, thin_recipe_p[length(thin_recipe_p)])
+    
+    # Check if glob env was modified, back-modify if modified
+    if (!is.null(volfun_bup)) {
+        assign("volfun", volfun_bup, envir = .GlobalEnv)
+    } else { # remove if it was assigned
+        rm(volfun, envir = .GlobalEnv)
+    }
 
-    thin_recipe <- c(0, thin_recipe) # match length with age
-    thin_recipe_p <- c(0, thin_recipe_p)
+    if (!is.null(growthFunCum_bup)) {
+        assign("growthFunCum", growthFunCum_bup, envir = .GlobalEnv)
+    } else { # remove if it was assigned
+        rm(growthFunCum, envir = .GlobalEnv)
+    }    
     
-    if (add_f_globen_g) {
-        rm("growthfun", envir = .GlobalEnv)
-    }
-    if (add_f_globen_v) {
-        rm("volfun", envir = .GlobalEnv)
-    }
-    
+    if (!is.null(growthfun_bup)) {
+        assign("growthfun", growthfun_bup, envir = .GlobalEnv)
+    } else { # remove if it was assigned
+        rm(growthfun, envir = .GlobalEnv)
+    }        
+
     # Outputs
     return(list(predvol_curve = cumnetgrowth, 
                 predvol_volmod = pred_cur, 

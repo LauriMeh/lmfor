@@ -136,9 +136,9 @@ LongTermSim <- function(age = NULL,
   k <- length(age)
   cuttingInstruction <- rep(0, k)
   # Determine thinning rules
-  if (length(thinningRule) == (length(age) - 1)) {
+  if (length(thinningRule) == length(age)) {
     cat("User-defined thinning rule activated.", fill = TRUE)
-    cuttingInstruction[1:(length(cuttingInstruction) - 1)] <- thinningRule 
+    cuttingInstruction[1:length(cuttingInstruction)] <- thinningRule 
   } else if (length(thinningRule) == 2) {
     #thinning <- 1-(1-thinningRule[2])^(1/thinningRule[1])
     thin_limit <- thinningRule[2] # assume 100 year limit for thinnings
