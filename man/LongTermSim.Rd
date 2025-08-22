@@ -2,197 +2,171 @@
 \alias{LongTermSim}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
-Age class simulator, help page needs to be finished. 
+Age class simulator
 }
 \description{
-A function to impute tree heights in a forest inventory situation where all trees have been measured 
-for diameter but only some trees have been measured for height. 
+A simulator that projects development of forest resources based on a age distribution and a growth curve. 
 }
 \usage{
-ImputeHeights(d, h, plot, modelName = "naslund", nranp = 2, varf = TRUE, 
-              addResidual = FALSE, makeplot=TRUE, level = 1,
-              start=NA, bh=1.3, control=list(),random=NA)
+LongTermSim(age = NULL, 
+            area = NULL, 
+            growth = NULL, 
+            growthG = NA, 
+            protectionLimit = 120, #thinning=0.005,
+            cutCriterion = NULL, 
+            target = NULL, 
+            simLength = 2, 
+            startyear = 2020,
+            productSink = 0.05, 
+            thinningRule = c(0.019, 100), 
+            cutSuo = FALSE, 
+            mortality = 0.01,
+            phi = 1, 
+            above = 0, 
+            shift = 30, 
+            areasuo = NA)
 }
 
 %- maybe also 'usage' for other objects documented here.
 \arguments{
-  \item{d}{
-  A numerical vector of tree diameters, usually given in cm.
+  \item{age}{
+    A vector of age classes. The current implementation uses a class width of 1 year.
   }
 
-  \item{h}{
-  A numerical vector of tree heights, usually given in meters. Should be of the same length as \code{d}. 
+  \item{area}{
+    A vector of areas covered by each age class. The areas must be given in hectares.
   }
 
-  \item{plot}{
-  A vector of type \code{numeric} or \code{factor}, defining the groups of the data; usually the plot indices. 
-  Should be of the same length as \code{d} and \code{h}.
+  \item{growth}{
+    A vector of net growths per year by age class. 
+    The growth curve is typically estimated using permanent national forest inventory plots.
   }
 
-  \item{modelName}{
-  Either (i) a character vector specifying the name of the nonlinear function or (ii) the formula specifying 
-  a linear model.
-  In case (i) the name should be one of the functions documented on the help page of \code{\link[lmfor]{HDmodels}}. 
-  In case (ii), it should be the linear formula in the form that is entered to the function \code{\link[nlme]{lme}}, for example 
-  \code{model=h~d+I(d^2)-1}
+  \item{growthG}{
+    A vector of gross growths per year by age class. 
+    The growth curve is typically estimated using permanent national forest inventory plots. 
+    Set NA (default) if gross growths are not of interest.
   }
   
-  \item{nranp}{
-  Parameters nranp and random specify two alternative ways to specify the random effects of the model. An easy but restricted way 
-  is to use argument \code{nranp}. It is an integer between 0 and the number of fixed parameters, and has the the following meaning 
-  in the case of nonlinear model: 
-  \itemize{
-     \item If \code{nranp=0}, then a model without random parameters is fitted. 
-                              Results to a fixed-effects model, and argument \code{plot} is not used.  
-     \item If \code{nranp=1}, then parameter a of a nonlinear function or the first coefficient of the linear formula 
-                              is assumed to vary among plots. 
-     \item If \code{nranp=2}, then a and b or the first two terms of the linear formula are assumed to vary among plots or  
-     \item If \code{nranp=3}, then a b, and c of a three-parameter nonlinear model or three first coefficients of a linear model 
-                              are assumed to vary among plots
-     }
-  In the case of linear model, the constant (if exists) it always counted as the first term.  
-  
-  As an alternative to nranp, argument \code{random} can be used to express the random part as a nlme formula, 
-  but without specification of the grouping structure. The provided formula is passed to the lme or nlme 
-  function. Argument random is always used when provided, so nranp has effect only if \code{random=NA} (the default).                           
+  \item{protectionLimit}{
+    A scalar value (years) that determines the oldest class that can be clear-cut.                          
   }
   
 
-  \item{varf}{
-  Numeric with values 0, 1 or 2. If 0 or FALSE, no variance function is used. 
-  If varf=1, 2 or TRUE, then the power- type variance function var(e)=sigma^2*w^(2*delta) is used.
-  where weight w is the raw diameter (when varf=1 or TRUE), or w=max(1,dsd+3) (when varf=2), 
-  where dsd=(d-D)/SDD. Here d is tree diameter, D and SDD are the mean and standard deviation 
-  of diameters on the plot in question.    
+  \item{CutCriterion}{
+    A string argument determining the criterion for cuttings. The possible alternatives are:
+    "RotationLength", "ClearcutArea", "HarvestVolume", "ProportionOfGrowth" and "AbsoluteSink".
   }
 
-  \item{addResidual}{
-   Boolean. If \code{TRUE}, a random residual is added to the imputed height from a normal distribution using 
-   the estimated variance function. If also \code{level=0} or if the plot did not include any measured heights
-   to predict the random effects,  
-   then also a randomly selected plot effect from among the predicted plot effects is added.
-   The added plot effect is the same for all trees of a given plot.
+  \item{target}{
+    A target value for CutCriterion. For example, HarvestVolume requires 
+    target cutting level in Mm3 per year. Note that thinnings will always 
+    be carried out regardless of the selected cutting target. 
+    A vector with the length determined by simLength or scalar.
+    If cuttingcriterion is harvestvolume, thinnings will always be carried out according to thinninRule.
    
-}
-  \item{makeplot}{
- Should a residual plot of the fitted model be produced for evaluation of goodness of fit? 
- The plot is produced using the default arguments of function \code{\link[lmfor]{plot.hdmod}}, 
- and is not affected by the value of arguments \code{level} and \code{addResidual}. 
-}
+  }
 
-  \item{level}{
-The level of prediction. 0 means fixed-effect prediction and 1 means plot-level prediction using the random effects. Has no effect if \code{nranp=0}. 
-}
+    \item{simLength}{
+      The length of the simulation in years.
+  }
 
-  \item{start, bh, control, random}{
-  Arguments passed to \code{fithd}. See documentation of \code{\link[lmfor]{fithd}}. 
-}
+    \item{startyear}{
+      The start year of the simulation.
+  }
+
+    \item{productSink}{
+      TO BE ADDED
+  }
+    \item{thinningRule}{
+      Thinning rule by age class. The input vector has same length as length(age) 
+      or alternatively a vector of two elements can be used. In case of two elemements,
+      the first indicates the proportion of harvested volume per age class and 
+      the second element refers to the max. age 
+      at which thinnings can be carried out, e.g. c(0.019, 100)
+  }
+    \item{cutSuo}{
+
+  }
+    \item{mortality}{
+      Mortality rate in terms of annual growth per age class.
+  }
+    \item{phi}{
+      The rate parameter associated with the exponential distributions used for 
+      the scheduling of final fellings. Default 1. See more details ?dexp.
+  }
+
+    \item{above}{
+      The proportion of final fellings carried out as thinnings from above. Default 0.
+  }
+    \item{shift}{
+      How many years do forests get younger after a thinning from above? Default 30 years.
+      This parameter is used when above > 0. Integer.
+  }
+
+    \item{areasuo}{
+      The Age distribution of protected forests.
+  }
 }
 \details{
- Age class simulator of Lauri Mehtätalo
- 
- copied from file vmisimul/simfunc4.R
- That file includes also a possibility for the video animation
-# 
- Author: Lauri Meht�talo
- Simuloidaan VMI-tulosten perusteella hakkuita
- vuoden ik�luokat, hakkkum��r� tavoitteen mukainen. 
- p��tehakkuut kohdeneetaan satunnisesti hakkuuik�isiin metsiin 
- N(meanph,sdph)jakaumasta 
- osa p��tehakkuista yl�harvennuksia
- Argumnentit: age, area growth: vejtprit joissa on l�ht�aineiston ik�luokat (vuotta), 
-              ik�luokkien pinta-alat (hehtaaria) ja ko. ik�luokan mets�n kasvu (m3/ha/v)
- ProtectionLimit: skalaari, mik� on vanhin ik�luokka joka voidan p��tehakata
- 
- CutCriterion ja target: Kriteeri jonka perusteella hakkuut tehd��n  
- Seuraavat on mahdolisia
- CutCriterion        target
- ProportionOfGrowth  Poistuman osuus kokonaiskasvusta (vaihteluv�li 0-2, 1=hakataan t�sm�llen kasvun verran)
- HarvestVolume       poistuman tilavuus (milj m3/v, vaihteluv�li ES reheviss� metsiss� 0-50)
- AbsoluteSink        kasvun poistuman erotus (milj m3/v) vaihteluv�li 0-20
- ClearcutArea        p��tehakkuuala (ha/v) vaihteluv�li 0-200000
- RotationLength      p��tehakkuuik� (v), vaihteluv�li 0-200
- 
- title               kuvan otiskko
- simLength           simuloinnin pituus on simlength*protectionLimit
- startYear           mink� vuoden ik�jakauma annettiin tiedostossa area
- productSink         mik� osuus hakkuukertym�st� p��tyy tuotenieluun (0-1)
- thinningRule        kuinka usein harvennetaan ja mik� osuus tilavuudesta poistuu (k�yt� oletuksia)
- thinningLimit       vanhin met� jota voidaan harventaa (k�yt� oletusarvoa)
- ymax                tulostettavan kuvan y-akselin maksimiarvot pinta-alalle ja kasvulle
- xmax                kuvan x-akselin maksimi
- addTexts            tulostetanko kuvaan tekstit
- meanph, sdph        p��tehakkuun keski-ik� ja hajonta jos exp=FALSE
- above               mik� osuus p��tehakkuista tehd��n yl�harvennuksina, k�yt� arvoa 0
- shift               kuinka paljon mets� nuorenee yl�harvennuksessa, k�yt� oletusta
- phi                 p��tehakkuiden ajoituksen jakaumaa kuvaavan eksponenttijakauman rate-parametri
- exp                 k�ytet��nk� p��tehakkuiden ajoitksen jakaumana eksponenttijakaumaa (TRUE) vai 
-                     normaalijakaumaa (FALSE). k�yt� oletusta. 
- areasuo             suojeltujen metsien ik�jakauma. k�yt� oletusta (esi suojelualueita mukana)
- makeplot            tehd��nk� kuva
- cutSuo, nortality   suojelumetsiin liittyvi� parametreja.   
+
 }
+
 \value{
-A list of components
-\item{h }{A vector of tree heights, including the measured heights for the trees with known height and imputed heights for the others.}
-\item{imputed }{A booelan vector of the same length as h, having value TRUE for imputed heights. Produced as \code{is.na(data$h)}}
-\item{model }{The fitted model that was used in imputation. Fitted using \code{\link[lmfor]{fithd}} which in turn 
-calls \code{\link[nlme]{nlme}} or  \code{\link[nlme]{gnls}}}
-\item{predType}{A vector of the same length as h, including information on the level of prediction. Value 0 means a measured height 
-(no model prediction is used), value 1 means the plot-level prediction has been done using the estimated plot effects.
-Value 2 means that no sample trees were available and the prediction is based on fixed part only (if level=0) or on a simulated 
-plot effect (if level=1).}
-\item{hpred}{Predicted heights for all trees. Equals to vector h for trees that had missing heights.}
+  A list of components (TO BE MODIFIED!)
+  \item{ikajakTalous}{}
+  \item{netgrowths}{}
+  \item{grossgrowths}{}
+  \item{hakkuumaara}{}
+  \item{nielut}{}
+  \item{nielutCum}{}
+  \item{growth}{}
+  \item{growthCurve}{}
+  \item{removals}{}
+  \item{volume}{}
+  \item{volumeSuo}{}
+  \item{kasvuTal}{}
+  \item{kasvuSuo}{}
+  \item{mortSuo}{}
+  \item{varTal}{}
+  \item{varSuo}{}
+  \item{nieTal}{}
+  \item{nieSuo}{}
+  \item{overcut}{}
 }
 
 \references{
-Mehtatalo, L., Gregoire, T.G., and de Miguel, S. Modeling Height-diameter curves for height prediction. Canadian Journal of Forest Research, 45(7): 826-837, \doi{10.1139/cjfr-2015-0054}
+Mehtätalo, L., Räty M., and Mehtätalo, J. 2025. A new growth curve and fit to the National Forest Inventory data of Finland. Ecological modelling, 501: 111006 , \doi{10.1016/j.ecolmodel.2024.111006}
 }
 
 \author{
-Lauri Mehtatalo <\email{lauri.mehtatalo@uef.fi}>
-}
-\note{
-Works only with the nonlinear functions specified in \code{\link[lmfor]{HDmodels}}; does not work if the modelName is specified as a linear expression.
+Lauri Mehtatalo <\email{lauri.mehtatalo@luke.fi}>
 }
 
 %% ~Make other sections like Warning with \section{Warning }{....} ~
 
-\seealso{
-\code{\link[lmfor]{fithd}} for model fitting and \code{\link[lmfor]{plot.hdmod}} for plotting.
-}
 \examples{
-data(spati) 
+# Load required datasets
+ 
+# Fit a growthcurve
 
-ImpFixed<-ImputeHeights(spati$d,spati$h,spati$plot,level=0)
-ImpRandom<-ImputeHeights(spati$d,spati$h,spati$plot,level=1,makeplot=FALSE)
-# Try also
-# ImpRanRes<-ImputeHeights(spati$d,spati$h,spati$plot,level=1,addResidual=TRUE,makeplot=FALSE)
-
-plot(spati$d[!is.na(spati$h)],
-     spati$h[!is.na(spati$h)],
-     col=spati$plot[!is.na(spati$h)],
-     main="Observations", xlab="d, cm", ylab="h, m",
-     ylim=c(0,30))
-
-plot(spati$d[ImpFixed$imputed],
-     ImpFixed$h[ImpFixed$imputed],
-     col=spati$plot[ImpFixed$imputed],
-     main="Imputed, Naslund, Fixed", xlab="d, cm", ylab="h, m",
-     ylim=c(0,30))
-       
-plot(spati$d[ImpRandom$imputed],
-     ImpRandom$h[ImpRandom$imputed],
-     col=spati$plot[ImpRandom$imputed],
-     main="Imputed, Naslund, Fixed + Plot", xlab="d, cm", ylab="h, m",
-     ylim=c(0,30))
-
-# Try also
-# plot(spati$d[ImpRanRes$imputed],
-#     ImpRanRes$h[ImpRanRes$imputed],
-#     col=spati$plot[ImpRanRes$imputed],
-#     main="Imputed, Naslund, Fixed + Plot + Tree", xlab="d, cm", ylab="h, m",
-#     ylim=c(0,30))
+# Get growth curve for a domain of interest
+netgrowth <- c(0, getGrowthCurve(max(ika), 
+                                  maakunta = "North Karelia",
+                                  kasvupaikka = "Medium",
+                                  suo = "Mineral soil", 
+                                  type = "Net"))
+# Simulate                                  
+sim_out <- LongTermSim(age = ika,
+                        area = ala, 
+                        growth = netgrowth, 
+                        growthG = NA,
+                        protectionLimit = max(ika),
+                        cutCriterion = "HarvestVolume",
+                        target = 3.24, # Cuttings Mm3/year
+                        simLength = 500,
+                        startyear = 2021,
+                        productSink = 0.05)
 }
 
-\keyword{ forest biometrics}
+\keyword{forest biometrics}
