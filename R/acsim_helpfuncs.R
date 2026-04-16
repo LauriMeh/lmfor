@@ -7,42 +7,53 @@ getGrowthCurve <- function(
 		tmax = 300,
 		region = NULL,
 		fert = NULL,
-		L2 = NULL,
+		L1 = NULL,
 		NFI = "notspecified",
 		type = c("Net", "Gross")[1], 
 		mods = NULL,
 		curvetype = "cur",
 		regions = NULL,    
 		ferts = NULL,
-		L2s = NULL,
+		L1s = NULL,
         NFIs = "notspecified",
-   		growf = NULL
+   		growf = NULL,
+		age_name = NULL, # character name for age used in the mod fitting
+		fert_name = "fert", # character name for fert used in the mod fitting
+		L1_name = "L1", # character name for L1 used in the mod fitting
+		NFI_name = "NFI", # character name for L1 used in the mod fitting
+		grreg_name = "region" # character name for growth used in the mod fit
 ) {
 	### Example arguments
 	# tmax = 300,
 	# region = "Central-South",
 	# fert = "average",
-	# L2 = "Alpine coniferous",
+	# L1 = "Alpine coniferous",
 	# NFI = "NNFI-1418/NNFI-1923",
 	# type = c("Net", "Gross")[1], 
 	# mods = NULL,
 	# curvetype = "cur",
 	# regions = c("Central-South","East","Finnmark","North","West"),    
 	# ferts = c("average","good","poor"),
-	# L2s= c("Alpine coniferous","boreal","Broadleaved forest",                                             
+	# L1s= c("Alpine coniferous","boreal","Broadleaved forest",                                             
 	# 		"Hemiboreal, nemoral coniferous and mixed broadleaved-coniferous",
 	# 		"Mire and swamp forest", "Plantations and self-sown exotic forest"),
 	# NFIs= c("NNFI-1115/NNFI-1418","NNFI-1418/NNFI-1923")
 	###
+
+	if (is.null(age_name)) {
+		stop(paste0("Please set argument 'age_name' to define age" , 
+		"variable used in model fitting"))
+	}
+
 	if (is.null(mods)) {
 		stop("Please provide growth model.")
 	}
 
-	if (is.null(region) | is.null(fert) | is.null(L2)) {
+	if (is.null(region) | is.null(fert) | is.null(L1)) {
 		stop("Please provide target domain specifications. NFI optional.")
 	}
 
-	if (is.null(regions) | is.null(ferts) | is.null(L2s)) {
+	if (is.null(regions) | is.null(ferts) | is.null(L1s)) {
 		stop(paste0("Please provide all domain specifications. ", 
 					"NFI is optional. Needed for prediction."))
 	}
@@ -53,19 +64,25 @@ getGrowthCurve <- function(
 	# predict.gls -funktiossa bugi, ja siksi newdatassa pitää esiintyä
 	# luokitteluasteikollisten muuttujoen kaikkia tasoja.
 	# siksi dataan pitää lisätä ne alkuun ja pudotetaan niiden ennusteeet lopuksi pois
-	maxlev <- max(length(regions), length(L2s), length(NFIs), length(ferts))
+	maxlev <- max(length(regions), length(L1s), length(NFIs), length(ferts))
 	preddat <- data.frame(
 		region = factor(c(rep(regions, length = maxlev), rep(region, tmax)), levels = regions),
 		fert = factor(c(rep(ferts, length = maxlev), rep(fert, tmax)), levels = ferts),
-		L2 = factor(c(rep(L2s, length = maxlev), rep(L2, tmax)), levels = L2s),
+		L1 = factor(c(rep(L1s, length = maxlev), rep(L1, tmax)), levels = L1s),
 		NFI = factor(c(rep(NFIs, length = maxlev), rep(NFI, tmax)), levels = NFIs),
 		age_ub = c(rep(1, maxlev), 1:tmax)
-	)
+	) %>%
+	  rename(!!age_name := age_ub, 
+	  !!fert_name := fert, 
+	  !!L1_name := L1, 
+	  !!grreg_name := region,
+	  !!NFI_name := NFI
+	  )
 	
 	if (!(any(type == c("Net", "Gross")))) stop("Argument 'type' must be ether 'Net' or 'Gross'")
 	if (!(any(region == regions))) stop("Maakuntaa ei loydy")
 	if (!(any(fert == ferts))) stop("Kasvupaikkaa on oltava 'Reheva', 'Keskihyva', 'Karuhko' tai 'Karu'")
-	if (!(any(L2 == L2s))) stop("'suo' on oltava 'Kangas' tai 'Turvemaa'")
+	if (!(any(L1 == L1s))) stop("'suo' on oltava 'Kangas' tai 'Turvemaa'")
 	if (type == "Net") sel <- 1 else sel <- 2
 	
 	# Do checkups for the global environment
@@ -262,30 +279,35 @@ getThinningCurve <- function(
 		tmax_class = 300,
 		region = NULL,
 		fert = NULL,
-		L2 = NULL,
+		L1 = NULL,
 		NFI = NULL,
 		netgrowthmod = growthNorway$Net,
 		volmodel = volNorway,
 		retrees = TRUE,
 		domain_stra = list(region = NULL,
 				fert = NULL,
-				L2 = NULL,
+				L1 = NULL,
 				NFI = NULL),
 		volf = NULL,
-		growf = NULL
+		growf = NULL,
+		age_name = "age", # character name for age used in the mod fitting
+		fert_name = "fert", # character name for fert used in the mod fitting
+		L1_name = "L1", # character name for L1 used in the mod fitting
+		NFI_name = "NFI", # character name for L1 used in the mod fitting
+		grreg_name = "region" # character name for growth used in the mod fit
 ) {
 	# Example args
 	# tmax_class = 300,
 	# region = "Central-South",
 	# fert = "average",
-	# L2 = "Alpine coniferous",
+	# L1 = "Alpine coniferous",
 	# NFI = "NNFI-1418/NNFI-1923",
 	# netgrowthmod = growthNorway$Net,
 	# volmodel = volNorway,
 	# retrees = TRUE,
 	# domain_stra = list(region = c("Central-South","East","Finnmark","North","West"),
 	# 		fert = c("average","good","poor"),
-	# 		L2 = c("Alpine coniferous","boreal","Broadleaved forest",                                             
+	# 		L1 = c("Alpine coniferous","boreal","Broadleaved forest",                                             
 	# 				"Hemiboreal, nemoral coniferous and mixed broadleaved-coniferous",
 	# 				"Mire and swamp forest", "Plantations and self-sown exotic forest"),
 	# 		NFI = c("NNFI-1115/NNFI-1418","NNFI-1418/NNFI-1923")),
@@ -295,12 +317,12 @@ getThinningCurve <- function(
 		stop("Please provide growth model.")
 	}
 
-	if (is.null(region) | is.null(fert) | is.null(L2) | is.null(NFI)) {
+	if (is.null(region) | is.null(fert) | is.null(L1) | is.null(NFI)) {
 		stop("Please provide target domain specifications.")
 	}
 
 	if (is.null(domain_stra$region) | is.null(domain_stra$fert) | 
-		is.null(domain_stra$L2) | is.null(domain_stra$NFI)) {
+		is.null(domain_stra$L1) | is.null(domain_stra$NFI)) {
 		stop("Please provide all domain specifications. Needed for prediction.")
 	}
 	# stratification variables
@@ -352,17 +374,24 @@ getThinningCurve <- function(
 		  rep(region, tmax_class)), levels = domain_stra$region),
 		fert = factor(c(rep(domain_stra$fert, length = maxlev), 
 		  rep(fert, tmax_class)), levels = domain_stra$fert),
-		L2 = factor(c(rep(domain_stra$L2, length = maxlev), 
-		  rep(L2, tmax_class)), levels = domain_stra$L2),
+		L1 = factor(c(rep(domain_stra$L1, length = maxlev), 
+		  rep(L1, tmax_class)), levels = domain_stra$L1),
 		NFI = factor(c(rep(domain_stra$NFI, length = maxlev), 
 		  rep(NFI, tmax_class)), levels = domain_stra$NFI),
 		age_ub = c(rep(1, maxlev), 1:tmax_class)
-	)
+	) %>%
+	  rename(!!age_name := age_ub, 
+	  !!fert_name := fert, 
+	  !!L1_name := L1, 
+	  !!grreg_name := region,
+	  !!NFI_name := NFI
+	  )
+
 	if (!(any(region == domain_stra$region))) stop("Maakuntaa ei loydy")
 	
 	if (!(any(fert == domain_stra$fert))) stop("Kasvupaikkaa on oltava 'Reheva', 'Keskihyva', 'Karuhko' tai 'Karu'")
 	
-	if (!(any(L2 == domain_stra$L2))) stop("'suo' on olatava 'Kangas' tai 'Turvemaa'")
+	if (!(any(L1 == domain_stra$L1))) stop("'suo' on olatava 'Kangas' tai 'Turvemaa'")
 
 	if (!(any(NFI == domain_stra$NFI))) stop("'suo' on olatava 'Kangas' tai 'Turvemaa'")
 	
